@@ -134,8 +134,4 @@ vercel
 
 Add `GROQ_API_KEY` and `HUGGINGFACE_API_KEY` in Vercel → Settings → Environment Variables.
 
----
 
-## License
-
-[MIT](./LICENSE)

@@ -8,7 +8,7 @@ export async function compareWithAI(
 ): Promise<CompareResult> {
   const groq = new Groq({ apiKey: import.meta.env.GROQ_API_KEY })
 
-  const prompt = `You are an AI model comparison expert. Compare these two AI models for a specific purpose and return ONLY a valid JSON object — no markdown, no backticks, no explanation.
+  const prompt = `You are an AI model comparison expert. Compare these two AI models for a specific purpose.
 
 MODEL 1:
 Name: ${model1Stats.name}
@@ -36,7 +36,7 @@ Score both models 0–100 for this purpose on:
 - accuracy: Reliability and correctness for this purpose
 - cost_efficiency: Value for money for this purpose
 
-Return ONLY this JSON, nothing else:
+Return ONLY a valid JSON object with no markdown, no backticks, no extra text. Use this exact structure:
 {
   "winner": "exact model name",
   "reason": "one short sentence why it wins",
@@ -49,18 +49,34 @@ Return ONLY this JSON, nothing else:
     model: 'llama-3.3-70b-versatile',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens: 600,
+    max_tokens: 1024,
   })
 
   const raw = response.choices[0]?.message?.content ?? ''
-  
-  // Robust JSON extraction: find the first '{' and last '}'
-  let cleaned = raw
-  const firstBrace = raw.indexOf('{')
-  const lastBrace = raw.lastIndexOf('}')
-  
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = raw.substring(firstBrace, lastBrace + 1)
+
+  function extractJSON(text: string): string | null {
+    // Strategy 1: try to find ```json ... ``` block
+    const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)```/)
+    if (jsonBlockMatch) return jsonBlockMatch[1].trim()
+
+    // Strategy 2: try to find ``` ... ``` block (language-agnostic)
+    const codeBlockMatch = text.match(/```\s*([\s\S]*?)```/)
+    if (codeBlockMatch) return codeBlockMatch[1].trim()
+
+    // Strategy 3: find first { and last }
+    const firstBrace = text.indexOf('{')
+    const lastBrace = text.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return text.substring(firstBrace, lastBrace + 1)
+    }
+
+    return null
+  }
+
+  const extracted = extractJSON(raw)
+  if (!extracted) {
+    console.error('[groq-compare] No JSON found. Raw content:', raw)
+    throw new Error('AI returned an invalid response format. Please try again.')
   }
 
   let parsed: {
@@ -72,9 +88,15 @@ Return ONLY this JSON, nothing else:
   }
 
   try {
-    parsed = JSON.parse(cleaned)
+    parsed = JSON.parse(extracted)
   } catch (e) {
     console.error('[groq-compare] Parse Error. Raw content:', raw)
+    console.error('[groq-compare] Extracted text:', extracted)
+    throw new Error('AI returned an invalid response format. Please try again.')
+  }
+
+  if (!parsed.winner || !parsed.reason || !parsed.verdict || !parsed.model1?.scores || !parsed.model2?.scores) {
+    console.error('[groq-compare] Missing required fields. Parsed:', parsed)
     throw new Error('AI returned an invalid response format. Please try again.')
   }
 

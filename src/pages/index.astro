@@ -455,6 +455,7 @@ const PROVIDER_COLORS: Record<string, string> = {
       loading.classList.remove('hidden');
       error.classList.add('hidden');
       resultsView.classList.add('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       
       try {
         const res = await fetch('/api/compare', {
